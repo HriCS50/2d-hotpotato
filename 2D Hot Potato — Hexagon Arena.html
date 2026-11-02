@@ -1,0 +1,2185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>2D Hot Potato — Hexagon Arena</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 50% 20%, #1e1b4b 0%, #0f172a 55%, #020617 100%);
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    canvas {
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .glow-amber {
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.35);
+    }
+    @keyframes pulse-fast {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+    .animate-pulse-fast {
+      animation: pulse-fast 0.45s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP NAVIGATION & HUD BAR -->
+  <header class="w-full glass-panel border-b border-slate-800/80 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 z-20">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 via-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/25 text-lg font-black">
+        🥔
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-base sm:text-lg font-extrabold tracking-tight bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400 bg-clip-text text-transparent">
+            2D HOT POTATO
+          </h1>
+          <span id="modeBadge" class="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            Single-Player Host
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block">
+          6-Vertex Hexagon Arena • Mouse Aim + Hold Left-Click to Charge Power
+        </p>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <button id="btnMenuSingle" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-sm">
+        Single-Player (Bots)
+      </button>
+      <button id="btnMenuMulti" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm">
+        Multiplayer Room (P2P)
+      </button>
+      <button id="btnOpenDeployModal" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white transition shadow-sm">
+        Share &amp; Deploy Link
+      </button>
+      <button id="btnToggleMute" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition" title="Toggle Sound Effects">
+        🔊 SFX On
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT AREA -->
+  <main class="flex-1 flex flex-col lg:flex-row gap-3 p-2.5 sm:p-4 max-w-[1440px] w-full mx-auto overflow-hidden">
+
+    <!-- LEFT / CENTER: GAME ARENA CANVAS -->
+    <section class="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden relative min-h-[440px] sm:min-h-[540px] shadow-2xl">
+      <!-- Top In-Game Status Banner -->
+      <div class="px-3.5 py-2 bg-slate-900/90 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-3">
+          <span id="roundStatusText" class="font-bold text-amber-300 flex items-center gap-1.5">
+            ⚡ Ready in Hexagon Arena
+          </span>
+          <span class="text-slate-600">|</span>
+          <span id="holderStatusText" class="text-slate-300 font-medium">
+            Potato Holder: <strong class="text-white">—</strong>
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- Fuse Indicator -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-400">Fuse:</span>
+            <div class="w-24 h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div id="hudFuseBar" class="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-75" style="width: 100%;"></div>
+            </div>
+            <span id="hudFuseText" class="font-mono font-bold text-amber-300 w-10 text-right">10.0s</span>
+          </div>
+
+          <!-- Power Indicator -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-400">Power:</span>
+            <div class="w-20 h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div id="hudPowerBar" class="h-full bg-gradient-to-r from-sky-400 via-amber-400 to-red-500" style="width: 0%;"></div>
+            </div>
+            <span id="hudPowerText" class="font-mono font-bold text-sky-300 w-9 text-right">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas Wrapper -->
+      <div id="canvasContainer" class="relative flex-1 w-full h-full flex items-center justify-center bg-slate-950/60 overflow-hidden">
+        <canvas id="gameCanvas" class="block w-full h-full"></canvas>
+
+        <!-- Center Overlay Banner for Round Winner / Game Over / Waiting -->
+        <div id="arenaOverlay" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-4 text-center hidden">
+          <div class="pointer-events-auto glass-panel px-6 py-5 rounded-2xl border border-amber-500/40 shadow-2xl max-w-md w-full">
+            <div id="overlayIcon" class="text-4xl mb-2">🏆</div>
+            <h2 id="overlayTitle" class="text-xl sm:text-2xl font-black text-white mb-1">Round Complete!</h2>
+            <p id="overlaySubtitle" class="text-xs sm:text-sm text-slate-300 mb-4">
+              Player survived the exploding potato!
+            </p>
+            <div class="flex items-center justify-center gap-2.5">
+              <button id="btnOverlayAction" type="button" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-lg transition">
+                Start Next Round
+              </button>
+              <button id="btnOverlayReset" type="button" class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                Full Match Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Floating Controls Tip -->
+        <div class="pointer-events-none absolute bottom-2.5 left-3 right-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+          <div class="glass-panel px-3 py-1 rounded-full border border-slate-800">
+            🖱️ <strong class="text-slate-200">Move Mouse</strong> to aim at a vertex • <strong class="text-amber-300">Hold Left Click</strong> to charge power • <strong class="text-emerald-300">Release</strong> to throw!
+          </div>
+          <div id="networkPingBadge" class="glass-panel px-3 py-1 rounded-full border border-slate-800 text-emerald-400 font-mono">
+            Host Authority: Local Device (0ms)
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR: ROOM HOSTING, 6 VERTEX SEATS & SETTINGS -->
+    <aside class="w-full lg:w-80 xl:w-96 flex flex-col gap-3 shrink-0">
+
+      <!-- Match Controls Card -->
+      <div class="glass-panel rounded-2xl p-3.5 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+            🎮 Host &amp; Match Control
+          </h2>
+          <span id="hostRoleTag" class="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            Hosting on Your Device
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnStartPauseMatch" type="button" class="col-span-1 py-2 px-3 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md transition">
+            ▶ Start / Resume
+          </button>
+          <button id="btnRestartMatch" type="button" class="col-span-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            🔄 Reset Lives &amp; Round
+          </button>
+        </div>
+
+        <!-- Quick Settings (Host Only) -->
+        <div id="hostSettingsPanel" class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80 text-xs">
+          <div>
+            <label for="selectBotDifficulty" class="block text-[11px] text-slate-400 mb-1">Bot Difficulty</label>
+            <select id="selectBotDifficulty" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="easy">Easy (Slow Pass)</option>
+              <option value="medium" selected>Medium (Smart Aim)</option>
+              <option value="hard">Hard (Sniper &amp; Trick)</option>
+            </select>
+          </div>
+          <div>
+            <label for="selectStartingLives" class="block text-[11px] text-slate-400 mb-1">Starting Lives</label>
+            <select id="selectStartingLives" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="1">1 Life (Sudden Death)</option>
+              <option value="3" selected>3 Lives (Standard)</option>
+              <option value="5">5 Lives (Marathon)</option>
+            </select>
+          </div>
+          <div>
+            <label for="selectFuseDuration" class="block text-[11px] text-slate-400 mb-1">Potato Fuse Time</label>
+            <select id="selectFuseDuration" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="7">Fast (6–9 sec)</option>
+              <option value="11" selected>Normal (9–13 sec)</option>
+              <option value="16">Long (14–18 sec)</option>
+            </select>
+          </div>
+          <div>
+            <label for="inputPlayerName" class="block text-[11px] text-slate-400 mb-1">Your Nickname</label>
+            <input id="inputPlayerName" type="text" maxlength="14" value="Player 1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500" />
+          </div>
+        </div>
+      </div>
+
+      <!-- P2P MULTIPLAYER ROOM PANEL -->
+      <div id="multiplayerPanel" class="glass-panel rounded-2xl p-3.5 flex flex-col gap-2.5 border border-indigo-500/30">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+            🌐 P2P Room Service (Serverless)
+          </h2>
+          <span id="p2pStatusDot" class="text-[11px] text-emerald-400 font-semibold">● Ready</span>
+        </div>
+
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Host a room directly on your own device via WebRTC + multi-tab sync, or join a friend's room code.
+        </p>
+
+        <!-- Host vs Join Tabs -->
+        <div class="grid grid-cols-2 gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+          <button id="tabHostRoom" type="button" class="py-1.5 px-2 rounded-lg text-xs font-bold bg-indigo-600 text-white transition">
+            Host Room
+          </button>
+          <button id="tabJoinRoom" type="button" class="py-1.5 px-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition">
+            Join Room
+          </button>
+        </div>
+
+        <!-- Host Room Subview -->
+        <div id="viewHostRoom" class="flex flex-col gap-2">
+          <div class="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">Your Hosted Room Code</div>
+              <div id="displayRoomCode" class="text-base font-black font-mono tracking-widest text-amber-300">LOCAL-BOTS</div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="btnCreateHostedRoom" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-500 hover:bg-indigo-400 text-white transition">
+                Generate Room
+              </button>
+              <button id="btnCopyRoomLink" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                Copy Invite
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input id="chkFillBots" type="checkbox" checked class="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0" />
+              <span>Fill empty hexagon vertices with Bots</span>
+            </label>
+            <button id="btnOpenSameDeviceTab" type="button" class="text-indigo-400 hover:text-indigo-300 underline font-medium">
+              Test in 2nd Tab ↗
+            </button>
+          </div>
+        </div>
+
+        <!-- Join Room Subview -->
+        <div id="viewJoinRoom" class="hidden flex flex-col gap-2">
+          <div class="flex gap-1.5">
+            <input id="inputJoinCode" type="text" maxlength="12" placeholder="Enter Room Code (e.g. HP7K9)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono uppercase text-white focus:outline-none focus:border-indigo-500" />
+            <button id="btnConnectToHost" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition">
+              Join Host
+            </button>
+          </div>
+          <div class="text-[11px] text-slate-400">
+            Connects directly to the room creator's device via WebRTC DataChannel or same-browser channel.
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 HEXAGON VERTEX SEATS LIST -->
+      <div class="glass-panel rounded-2xl p-3.5 flex-1 flex flex-col gap-2 min-h-[210px]">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-300">
+            ⬡ Hexagon Vertex Seats (6 Players)
+          </h2>
+          <span id="aliveCountBadge" class="text-[11px] text-amber-300 font-semibold">6 / 6 Alive</span>
+        </div>
+
+        <div id="vertexSeatsList" class="flex flex-col gap-1.5 overflow-y-auto pr-0.5">
+          <!-- Populated dynamically via renderSeatsUI() -->
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- SHARE & DEPLOY MODAL -->
+  <div id="deployModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-filter backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="glass-panel rounded-2xl border border-slate-700 max-w-lg w-full p-5 shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🚀</span>
+          <h3 class="text-base font-extrabold text-white">Shareable Link &amp; Instant Free Web Deployment</h3>
+        </div>
+        <button id="btnCloseDeployModal" type="button" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">✕</button>
+      </div>
+
+      <div class="flex flex-col gap-3 text-xs text-slate-300 leading-relaxed">
+        <div class="p-3 rounded-xl bg-indigo-950/60 border border-indigo-500/30">
+          <div class="font-bold text-indigo-300 mb-1">1. Shareable Room Invite Link (With Room Code Pre-Filled)</div>
+          <p class="text-[11px] text-slate-400 mb-2">
+            When you create a room, share this URL with friends. Anyone opening it automatically joins your device's hosted room:
+          </p>
+          <div class="flex gap-1.5">
+            <input id="modalShareUrlInput" type="text" readonly class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-amber-300" value="" />
+            <button id="btnModalCopyUrl" type="button" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">
+              Copy Link
+            </button>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+          <div class="font-bold text-emerald-300 mb-1">2. Zero-Server Architecture (100% Client-Hosted)</div>
+          <p class="text-[11px] text-slate-400 mb-2">
+            Because both Single-Player and Multiplayer rooms run directly on the host player's browser (via WebRTC PeerJS + BroadcastChannel), you need <strong>zero backend servers</strong>. Download this standalone HTML file and drop it onto any free static host for a permanent public URL:
+          </p>
+          <ul class="list-disc list-inside space-y-1 text-[11px] text-slate-300 mb-3">
+            <li><strong>Netlify Drop:</strong> Drag &amp; drop the downloaded HTML file at <span class="font-mono text-amber-300">app.netlify.com/drop</span> for an instant <span class="font-mono">https://...netlify.app</span> link.</li>
+            <li><strong>GitHub Pages / Vercel / Tiiny.host:</strong> Upload <span class="font-mono">index.html</span> for a permanent link you can send to anyone.</li>
+          </ul>
+          <button id="btnDownloadStandaloneHtml" type="button" class="w-full py-2 px-3 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition shadow-md">
+            ⬇️ Download Standalone Game HTML (Ready to Host or Send to Friends)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ==========================================
+      // 1. SYNTHESIZED SOUND ENGINE (Web Audio API)
+      // ==========================================
+      const SoundFX = {
+        ctx: null,
+        muted: false,
+        chargeOsc: null,
+        chargeGain: null,
+
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        },
+
+        playTone(freq, type, duration, vol = 0.12, slideFreq = null) {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type || 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            if (slideFreq) {
+              osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideFreq), now + duration);
+            }
+            gain.gain.setValueAtTime(vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + duration);
+          } catch (e) {}
+        },
+
+        playTick(urgency = 0) {
+          const freq = 520 + urgency * 420;
+          this.playTone(freq, 'triangle', 0.055, 0.08 + urgency * 0.06, freq * 0.8);
+        },
+
+        playThrow(powerRatio = 0.5) {
+          const startFreq = 240 + powerRatio * 340;
+          this.playTone(startFreq, 'sawtooth', 0.19, 0.14, startFreq * 1.9);
+        },
+
+        playCatch() {
+          this.playTone(420, 'sine', 0.11, 0.13, 660);
+        },
+
+        playWallBounce() {
+          this.playTone(180, 'square', 0.08, 0.08, 110);
+        },
+
+        playExplosion() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const bufferSize = this.ctx.sampleRate * 0.55;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+              data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.16));
+            }
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(650, now);
+            filter.frequency.exponentialRampToValueAtTime(80, now + 0.55);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.32, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.55);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start(now);
+          } catch (e) {}
+        },
+
+        playWinFanfare() {
+          if (this.muted) return;
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((n, idx) => {
+            setTimeout(() => this.playTone(n, 'triangle', 0.22, 0.14), idx * 95);
+          });
+        }
+      };
+
+      // ==========================================
+      // 2. CONSTANTS & HEXAGON GEOMETRY
+      // ==========================================
+      const SEAT_COLORS = [
+        { main: '#f59e0b', light: '#fde68a', name: 'Amber' },   // Vertex 0 (Top-Left / Bottom-Center)
+        { main: '#38bdf8', light: '#bae6fd', name: 'Sky' },     // Vertex 1
+        { main: '#a855f7', light: '#e9d5ff', name: 'Purple' },  // Vertex 2
+        { main: '#ec4899', light: '#fbcfe8', name: 'Pink' },    // Vertex 3
+        { main: '#10b981', light: '#a7f3d0', name: 'Emerald' }, // Vertex 4
+        { main: '#f43f5e', light: '#fecdd3', name: 'Rose' }     // Vertex 5
+      ];
+
+      const BOT_NAMES = [
+        'Bot Tater',
+        'Bot Spudnik',
+        'Bot Masher',
+        'Bot Crispy',
+        'Bot Tot',
+        'Bot Sizzle'
+      ];
+
+      // Normalized coordinate space: center (0, 0), hexagon radius = 1.0
+      // Vertex 0 is at bottom (angle = +PI/2) so the local host sits comfortably at the bottom vertex!
+      function getVertexNormalizedPos(index) {
+        const angle = (Math.PI / 2) + (index * Math.PI * 2) / 6;
+        return {
+          x: Math.cos(angle),
+          y: Math.sin(angle),
+          angle
+        };
+      }
+
+      const HEX_VERTICES = [0, 1, 2, 3, 4, 5].map(getVertexNormalizedPos);
+
+      // ==========================================
+      // 3. AUTHORITATIVE GAME STATE (HOST OR SYNCED)
+      // ==========================================
+      const state = {
+        mode: 'single',          // 'single' | 'multi_host' | 'multi_client'
+        isHost: true,            // True in single-player AND when hosting a room
+        mySeatIndex: 0,          // Which vertex (0..5) this browser controls
+        roomCode: 'LOCAL-BOTS',
+        fillWithBots: true,
+        botDifficulty: 'medium', // 'easy' | 'medium' | 'hard'
+        startingLives: 3,
+        baseFuseSeconds: 11,
+
+        roundNumber: 1,
+        phase: 'playing',        // 'playing' | 'paused' | 'round_over' | 'match_over'
+        winnerText: '',
+        subtitleText: '',
+
+        // 6 seats on the 6 vertices of the hexagon
+        seats: [],
+
+        // Potato state (normalized coordinates relative to hexagon center & radius)
+        potato: {
+          x: 0,
+          y: 1,
+          vx: 0,
+          vy: 0,
+          holderIndex: 0,        // 0..5 if held, or -1 if flying in mid-air
+          lastHolderIndex: 0,    // Who threw it last (responsible until caught!)
+          fuseRemaining: 11.0,
+          fuseTotal: 11.0,
+          spinAngle: 0,
+          inFlightTime: 0,
+          throwPowerRatio: 0,
+          catchCooldown: 0       // Prevents instant self-re-catch on throw
+        },
+
+        // Local mouse & charging input
+        input: {
+          mouseNormX: 0,
+          mouseNormY: 0,
+          aimAngle: -Math.PI / 2,
+          isCharging: false,
+          chargeStartMs: 0,
+          chargePower: 0         // 0.0 to 1.0
+        },
+
+        // Visual FX (particles, shockwaves, floating texts, screen shake)
+        particles: [],
+        shockwaves: [],
+        floatingTexts: [],
+        screenShake: 0,
+        lastTickSoundTime: 0
+      };
+
+      function createInitialSeats() {
+        const localNameInput = document.getElementById('inputPlayerName');
+        const myName = (localNameInput && localNameInput.value.trim()) ? localNameInput.value.trim() : 'Player 1';
+
+        state.seats = [0, 1, 2, 3, 4, 5].map((idx) => {
+          const isLocalOwner = (idx === 0);
+          return {
+            index: idx,
+            name: isLocalOwner ? myName : BOT_NAMES[idx],
+            isBot: !isLocalOwner,
+            peerId: isLocalOwner ? 'HOST' : null,
+            lives: state.startingLives,
+            maxLives: state.startingLives,
+            alive: true,
+            aimAngle: HEX_VERTICES[idx].angle + Math.PI, // Facing center
+            chargePower: 0,
+            isCharging: false,
+            botThinkTimer: 0.55,
+            botTargetSeat: 0,
+            botDesiredPower: 0.65,
+            stunTimer: 0,
+            score: 0
+          };
+        });
+      }
+
+      // ==========================================
+      // 4. TOAST NOTIFICATIONS
+      // ==========================================
+      function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+        const el = document.createElement('div');
+        const colors = {
+          info: 'border-indigo-500/50 bg-slate-900/95 text-indigo-200',
+          success: 'border-emerald-500/50 bg-slate-900/95 text-emerald-200',
+          warn: 'border-amber-500/50 bg-slate-900/95 text-amber-200',
+          danger: 'border-rose-500/50 bg-slate-900/95 text-rose-200'
+        };
+        el.className = `px-3.5 py-2 rounded-xl border text-xs font-semibold shadow-xl transition-all duration-300 ${colors[type] || colors.info}`;
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(6px)';
+          setTimeout(() => el.remove(), 300);
+        }, 3200);
+      }
+
+      // ==========================================
+      // 5. P2P ROOM NETWORKING (PeerJS + BroadcastChannel)
+      // ==========================================
+      const Net = {
+        peer: null,
+        connections: new Map(), // peerId -> DataConnection (Host side)
+        hostConn: null,         // DataConnection to Host (Client side)
+        bc: null,               // BroadcastChannel for same-device multi-tab testing
+        clientId: 'client-' + Math.random().toString(36).substring(2, 8),
+        lastStateBroadcast: 0,
+
+        cleanup() {
+          if (this.bc) {
+            try { this.bc.close(); } catch (e) {}
+            this.bc = null;
+          }
+          if (this.hostConn) {
+            try { this.hostConn.close(); } catch (e) {}
+            this.hostConn = null;
+          }
+          this.connections.forEach((conn) => {
+            try { conn.close(); } catch (e) {}
+          });
+          this.connections.clear();
+          if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+            this.peer = null;
+          }
+        },
+
+        generateRoomCode() {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          let code = 'HP';
+          for (let i = 0; i < 4; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          return code;
+        },
+
+        startHostingRoom(customCode) {
+          this.cleanup();
+          state.mode = 'multi_host';
+          state.isHost = true;
+          state.mySeatIndex = 0;
+          state.roomCode = (customCode || this.generateRoomCode()).toUpperCase();
+
+          updateRoomUI();
+
+          // 1. Local BroadcastChannel so opening a 2nd browser tab connects immediately with 0ms latency
+          if (typeof BroadcastChannel !== 'undefined') {
+            this.bc = new BroadcastChannel('hotpotato_room_' + state.roomCode);
+            this.bc.onmessage = (ev) => {
+              if (ev && ev.data) {
+                this.handleHostReceiveMessage(ev.data.senderId, ev.data, (reply) => {
+                  if (this.bc) this.bc.postMessage({ targetId: ev.data.senderId, ...reply });
+                });
+              }
+            };
+          }
+
+          // 2. PeerJS WebRTC public signaling so friends on other devices can connect directly to this browser
+          if (typeof Peer !== 'undefined') {
+            try {
+              const peerId = 'hp2d-room-' + state.roomCode.toLowerCase();
+              this.peer = new Peer(peerId);
+              this.peer.on('open', () => {
+                setP2PStatus('● Hosting Room ' + state.roomCode, 'text-emerald-400');
+                showToast('Room ' + state.roomCode + ' is live on your device!', 'success');
+              });
+              this.peer.on('connection', (conn) => {
+                this.connections.set(conn.peer, conn);
+                conn.on('data', (data) => {
+                  this.handleHostReceiveMessage(conn.peer, data, (reply) => {
+                    if (conn.open) conn.send(reply);
+                  });
+                });
+                conn.on('close', () => {
+                  this.handlePeerDisconnect(conn.peer);
+                });
+              });
+              this.peer.on('error', () => {
+                setP2PStatus('● Local/LAN Host Ready (' + state.roomCode + ')', 'text-amber-400');
+              });
+            } catch (e) {
+              setP2PStatus('● Local Host Ready (' + state.roomCode + ')', 'text-amber-400');
+            }
+          } else {
+            setP2PStatus('● Multi-Tab Host Ready (' + state.roomCode + ')', 'text-emerald-400');
+          }
+
+          resetFullMatch();
+        },
+
+        joinHostedRoom(rawCode) {
+          const code = (rawCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (!code) {
+            showToast('Please enter a valid Room Code.', 'warn');
+            return;
+          }
+          this.cleanup();
+          state.mode = 'multi_client';
+          state.isHost = false;
+          state.roomCode = code;
+          setP2PStatus('◌ Connecting to ' + code + '...', 'text-amber-300');
+          updateRoomUI();
+
+          const myName = (document.getElementById('inputPlayerName').value || 'Guest').trim();
+          let joined = false;
+
+          // 1. Try BroadcastChannel first (instant if host is on same browser/device)
+          if (typeof BroadcastChannel !== 'undefined') {
+            this.bc = new BroadcastChannel('hotpotato_room_' + code);
+            this.bc.onmessage = (ev) => {
+              const msg = ev.data;
+              if (!msg) return;
+              if (msg.targetId && msg.targetId !== this.clientId) return;
+              if (msg.type === 'welcome' || msg.type === 'state_sync' || msg.type === 'fx_event') {
+                if (!joined && msg.type === 'welcome') {
+                  joined = true;
+                  state.mySeatIndex = msg.seatIndex;
+                  setP2PStatus('● Connected (Seat V' + (msg.seatIndex + 1) + ')', 'text-emerald-400');
+                  showToast('Joined Room ' + code + ' at Vertex ' + (msg.seatIndex + 1) + '!', 'success');
+                  updateRoomUI();
+                }
+                this.handleClientReceiveMessage(msg);
+              }
+            };
+            this.bc.postMessage({
+              type: 'join_request',
+              senderId: this.clientId,
+              name: myName
+            });
+          }
+
+          // 2. Also connect via PeerJS WebRTC for cross-device friends
+          if (typeof Peer !== 'undefined') {
+            try {
+              this.peer = new Peer();
+              this.peer.on('open', () => {
+                if (joined) return;
+                const hostPeerId = 'hp2d-room-' + code.toLowerCase();
+                const conn = this.peer.connect(hostPeerId, { reliable: true });
+                this.hostConn = conn;
+                conn.on('open', () => {
+                  conn.send({
+                    type: 'join_request',
+                    senderId: this.clientId,
+                    name: myName
+                  });
+                });
+                conn.on('data', (msg) => {
+                  if (!joined && msg.type === 'welcome') {
+                    joined = true;
+                    state.mySeatIndex = msg.seatIndex;
+                    setP2PStatus('● Connected via WebRTC (V' + (msg.seatIndex + 1) + ')', 'text-emerald-400');
+                    showToast('Connected to Host Room ' + code + '!', 'success');
+                    updateRoomUI();
+                  }
+                  this.handleClientReceiveMessage(msg);
+                });
+                conn.on('close', () => {
+                  setP2PStatus('✕ Disconnected from Host', 'text-rose-400');
+                  showToast('Host closed the room.', 'danger');
+                });
+              });
+            } catch (e) {}
+          }
+        },
+
+        handleHostReceiveMessage(senderId, msg, replyFn) {
+          if (!state.isHost || !msg) return;
+
+          if (msg.type === 'join_request') {
+            // Find an existing seat for this senderId or first available bot seat
+            let seat = state.seats.find((s) => s.peerId === senderId);
+            if (!seat) {
+              seat = state.seats.find((s) => s.isBot && s.index !== 0);
+            }
+            if (!seat) {
+              replyFn({ type: 'room_full' });
+              return;
+            }
+            seat.isBot = false;
+            seat.peerId = senderId;
+            seat.name = (msg.name || ('Player ' + (seat.index + 1))).slice(0, 14);
+            seat.alive = true;
+            seat.lives = Math.max(1, seat.lives);
+
+            replyFn({
+              type: 'welcome',
+              seatIndex: seat.index,
+              roomCode: state.roomCode
+            });
+            showToast(seat.name + ' joined at Vertex ' + (seat.index + 1) + '!', 'info');
+            renderSeatsUI();
+            this.broadcastStateFromHost(true);
+          } else if (msg.type === 'client_input') {
+            const seat = state.seats[msg.seatIndex];
+            if (seat && seat.peerId === senderId) {
+              seat.aimAngle = msg.aimAngle;
+              seat.isCharging = !!msg.isCharging;
+              seat.chargePower = msg.chargePower || 0;
+              if (msg.throwTriggered && state.potato.holderIndex === seat.index) {
+                executeThrow(seat.index, msg.aimAngle, Math.max(0.15, msg.throwPower || 0.5));
+              }
+            }
+          }
+        },
+
+        handlePeerDisconnect(peerId) {
+          this.connections.delete(peerId);
+          const seat = state.seats.find((s) => s.peerId === peerId);
+          if (seat) {
+            showToast(seat.name + ' left. Replaced by Bot.', 'warn');
+            seat.isBot = true;
+            seat.peerId = null;
+            seat.name = BOT_NAMES[seat.index];
+            renderSeatsUI();
+          }
+        },
+
+        sendClientInput(throwTriggered = false, throwPower = 0) {
+          if (state.isHost) return;
+          const payload = {
+            type: 'client_input',
+            senderId: this.clientId,
+            seatIndex: state.mySeatIndex,
+            aimAngle: state.input.aimAngle,
+            isCharging: state.input.isCharging,
+            chargePower: state.input.chargePower,
+            throwTriggered,
+            throwPower
+          };
+          if (this.hostConn && this.hostConn.open) {
+            this.hostConn.send(payload);
+          }
+          if (this.bc) {
+            this.bc.postMessage(payload);
+          }
+        },
+
+        broadcastStateFromHost(force = false) {
+          if (!state.isHost) return;
+          const now = performance.now();
+          if (!force && now - this.lastStateBroadcast < 33) return; // 30Hz sync
+          this.lastStateBroadcast = now;
+
+          const packet = {
+            type: 'state_sync',
+            phase: state.phase,
+            roundNumber: state.roundNumber,
+            winnerText: state.winnerText,
+            subtitleText: state.subtitleText,
+            potato: state.potato,
+            seats: state.seats.map((s) => ({
+              index: s.index,
+              name: s.name,
+              isBot: s.isBot,
+              lives: s.lives,
+              maxLives: s.maxLives,
+              alive: s.alive,
+              aimAngle: s.aimAngle,
+              chargePower: s.chargePower,
+              isCharging: s.isCharging,
+              score: s.score
+            }))
+          };
+
+          this.connections.forEach((conn) => {
+            if (conn.open) conn.send(packet);
+          });
+          if (this.bc) {
+            this.bc.postMessage(packet);
+          }
+        },
+
+        broadcastFX(fxType, x, y, color, text) {
+          if (!state.isHost) return;
+          const packet = { type: 'fx_event', fxType, x, y, color, text };
+          this.connections.forEach((conn) => {
+            if (conn.open) conn.send(packet);
+          });
+          if (this.bc) {
+            this.bc.postMessage(packet);
+          }
+        },
+
+        handleClientReceiveMessage(msg) {
+          if (msg.type === 'state_sync') {
+            state.phase = msg.phase;
+            state.roundNumber = msg.roundNumber;
+            state.winnerText = msg.winnerText;
+            state.subtitleText = msg.subtitleText;
+            Object.assign(state.potato, msg.potato);
+
+            msg.seats.forEach((sData, idx) => {
+              if (state.seats[idx]) {
+                const keepLocalAim = (idx === state.mySeatIndex);
+                const prevLives = state.seats[idx].lives;
+                Object.assign(state.seats[idx], sData);
+                if (keepLocalAim) {
+                  state.seats[idx].aimAngle = state.input.aimAngle;
+                  state.seats[idx].isCharging = state.input.isCharging;
+                  state.seats[idx].chargePower = state.input.chargePower;
+                }
+                if (prevLives !== sData.lives) {
+                  renderSeatsUI();
+                }
+              }
+            });
+            syncOverlayFromState();
+          } else if (msg.type === 'fx_event') {
+            if (msg.fxType === 'explosion') {
+              spawnExplosionParticles(msg.x, msg.y);
+              SoundFX.playExplosion();
+            } else if (msg.fxType === 'throw') {
+              SoundFX.playThrow(0.6);
+            } else if (msg.fxType === 'catch') {
+              SoundFX.playCatch();
+              spawnFloatingText(msg.x, msg.y, msg.text || 'CAUGHT!', msg.color || '#38bdf8');
+            }
+          }
+        }
+      };
+
+      function setP2PStatus(text, colorClass) {
+        const el = document.getElementById('p2pStatusDot');
+        if (el) {
+          el.textContent = text;
+          el.className = 'text-[11px] font-semibold ' + colorClass;
+        }
+      }
+
+      // ==========================================
+      // 6. CORE GAMEPLAY & PHYSICS ENGINE
+      // ==========================================
+      function getActiveSeats() {
+        return state.seats.filter((s) => {
+          if (!s.alive) return false;
+          if (!state.fillWithBots && state.mode !== 'single' && s.isBot) return false;
+          return true;
+        });
+      }
+
+      function resetRound(preserveScores = true) {
+        const active = getActiveSeats();
+        if (active.length <= 1) {
+          // Need full match reset if 1 or fewer alive
+          state.seats.forEach((s) => {
+            s.lives = state.startingLives;
+            s.maxLives = state.startingLives;
+            s.alive = (!state.fillWithBots && state.mode !== 'single' && s.isBot) ? false : true;
+            if (!preserveScores) s.score = 0;
+          });
+        }
+
+        const aliveNow = getActiveSeats();
+        const randomSeat = aliveNow[Math.floor(Math.random() * aliveNow.length)] || state.seats[0];
+
+        const vPos = HEX_VERTICES[randomSeat.index];
+        const jitter = (Math.random() * 4) - 2;
+        const fuseTotal = Math.max(5, state.baseFuseSeconds + jitter);
+
+        state.potato.x = vPos.x;
+        state.potato.y = vPos.y;
+        state.potato.vx = 0;
+        state.potato.vy = 0;
+        state.potato.holderIndex = randomSeat.index;
+        state.potato.lastHolderIndex = randomSeat.index;
+        state.potato.fuseTotal = fuseTotal;
+        state.potato.fuseRemaining = fuseTotal;
+        state.potato.inFlightTime = 0;
+        state.potato.catchCooldown = 0;
+
+        state.input.isCharging = false;
+        state.input.chargePower = 0;
+
+        state.seats.forEach((s) => {
+          s.isCharging = false;
+          s.chargePower = 0;
+          s.botThinkTimer = getBotReactionTime();
+          s.botTargetSeat = pickBotTarget(s.index);
+        });
+
+        state.phase = 'playing';
+        syncOverlayFromState();
+        renderSeatsUI();
+        Net.broadcastStateFromHost(true);
+      }
+
+      function resetFullMatch() {
+        state.roundNumber = 1;
+        state.seats.forEach((s) => {
+          s.lives = state.startingLives;
+          s.maxLives = state.startingLives;
+          s.alive = (!state.fillWithBots && state.mode !== 'single' && s.isBot) ? false : true;
+          s.score = 0;
+        });
+        resetRound(false);
+      }
+
+      function getBotReactionTime() {
+        if (state.botDifficulty === 'easy') return 0.75 + Math.random() * 0.55;
+        if (state.botDifficulty === 'hard') return 0.22 + Math.random() * 0.28;
+        return 0.42 + Math.random() * 0.38;
+      }
+
+      function pickBotTarget(botSeatIdx) {
+        const candidates = getActiveSeats().filter((s) => s.index !== botSeatIdx);
+        if (candidates.length === 0) return 0;
+        if (state.botDifficulty === 'hard') {
+          // Prefer human players or players with low lives
+          const humans = candidates.filter((c) => !c.isBot);
+          if (humans.length > 0 && Math.random() < 0.65) {
+            return humans[Math.floor(Math.random() * humans.length)].index;
+          }
+        }
+        return candidates[Math.floor(Math.random() * candidates.length)].index;
+      }
+
+      function executeThrow(seatIndex, aimAngle, powerRatio) {
+        const seat = state.seats[seatIndex];
+        if (!seat || !seat.alive) return;
+        if (state.potato.holderIndex !== seatIndex) return;
+
+        const clampedPower = Math.max(0.15, Math.min(1.0, powerRatio));
+        // Speed in normalized arena units per second (Hexagon diameter is 2.0)
+        const minSpeed = 1.45;
+        const maxSpeed = 4.35;
+        const speed = minSpeed + clampedPower * (maxSpeed - minSpeed);
+
+        const vPos = HEX_VERTICES[seatIndex];
+        state.potato.x = vPos.x;
+        state.potato.y = vPos.y;
+        state.potato.vx = Math.cos(aimAngle) * speed;
+        state.potato.vy = Math.sin(aimAngle) * speed;
+        state.potato.holderIndex = -1;
+        state.potato.lastHolderIndex = seatIndex;
+        state.potato.throwPowerRatio = clampedPower;
+        state.potato.inFlightTime = 0;
+        state.potato.catchCooldown = 0.16; // So thrower doesn't immediately re-catch
+
+        seat.isCharging = false;
+        seat.chargePower = 0;
+
+        // Spawn throw burst particles
+        for (let i = 0; i < 14; i++) {
+          const spread = aimAngle + (Math.random() - 0.5) * 0.6;
+          const spd = (0.4 + Math.random() * 1.1) * clampedPower;
+          state.particles.push({
+            x: vPos.x,
+            y: vPos.y,
+            vx: Math.cos(spread) * spd,
+            vy: Math.sin(spread) * spd,
+            size: 3 + Math.random() * 4,
+            color: clampedPower > 0.75 ? '#f97316' : '#fbbf24',
+            alpha: 1,
+            life: 0.35 + Math.random() * 0.2
+          });
+        }
+
+        SoundFX.playThrow(clampedPower);
+        Net.broadcastFX('throw', vPos.x, vPos.y, '#fbbf24', '');
+        Net.broadcastStateFromHost(true);
+      }
+
+      // Reflect potato off the 6 edges of the regular hexagon so it stays inside the arena
+      function collidePotatoWithHexagonEdges() {
+        for (let i = 0; i < 6; i++) {
+          const a = HEX_VERTICES[i];
+          const b = HEX_VERTICES[(i + 1) % 6];
+          // Edge vector a -> b
+          const ex = b.x - a.x;
+          const ey = b.y - a.y;
+          const len = Math.hypot(ex, ey);
+          // Inward normal pointing toward (0,0)
+          let nx = -ey / len;
+          let ny = ex / len;
+          // Ensure normal points inward toward origin
+          if (nx * (-a.x) + ny * (-a.y) < 0) {
+            nx = -nx;
+            ny = -ny;
+          }
+
+          // Signed distance from edge line into interior
+          const dist = (state.potato.x - a.x) * nx + (state.potato.y - a.y) * ny;
+          const potatoRadiusNorm = 0.065;
+          if (dist < potatoRadiusNorm) {
+            // Push back inside
+            state.potato.x += nx * (potatoRadiusNorm - dist);
+            state.potato.y += ny * (potatoRadiusNorm - dist);
+
+            // Reflect velocity if moving outward
+            const vn = state.potato.vx * nx + state.potato.vy * ny;
+            if (vn < 0) {
+              const restitution = 0.88;
+              state.potato.vx -= (1 + restitution) * vn * nx;
+              state.potato.vy -= (1 + restitution) * vn * ny;
+              SoundFX.playWallBounce();
+
+              // Wall spark particles
+              for (let k = 0; k < 7; k++) {
+                state.particles.push({
+                  x: state.potato.x,
+                  y: state.potato.y,
+                  vx: nx * (0.4 + Math.random() * 0.8) + (Math.random() - 0.5) * 0.6,
+                  vy: ny * (0.4 + Math.random() * 0.8) + (Math.random() - 0.5) * 0.6,
+                  size: 2.5 + Math.random() * 2.5,
+                  color: '#38bdf8',
+                  alpha: 1,
+                  life: 0.25
+                });
+              }
+            }
+          }
+        }
+      }
+
+      function spawnExplosionParticles(nx, ny) {
+        state.screenShake = 18;
+        state.shockwaves.push({
+          x: nx,
+          y: ny,
+          radius: 0.04,
+          maxRadius: 0.65,
+          alpha: 1.0,
+          color: '#f97316'
+        });
+        const colors = ['#ef4444', '#f97316', '#f59e0b', '#fef08a', '#ffffff'];
+        for (let i = 0; i < 55; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 0.3 + Math.random() * 2.4;
+          state.particles.push({
+            x: nx,
+            y: ny,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            size: 3 + Math.random() * 6,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            alpha: 1,
+            life: 0.45 + Math.random() * 0.55
+          });
+        }
+      }
+
+      function spawnFloatingText(nx, ny, text, color = '#fbbf24') {
+        state.floatingTexts.push({
+          x: nx,
+          y: ny,
+          text,
+          color,
+          alpha: 1.0,
+          vy: -0.35
+        });
+      }
+
+      function handlePotatoExplosion() {
+        // Victim is current holder, OR if in mid-air, the last holder who failed to complete a catch!
+        let victimIdx = state.potato.holderIndex !== -1
+          ? state.potato.holderIndex
+          : state.potato.lastHolderIndex;
+
+        let victim = state.seats[victimIdx];
+        if (!victim || !victim.alive) {
+          const active = getActiveSeats();
+          victim = active[0];
+        }
+
+        const vPos = victim ? HEX_VERTICES[victim.index] : { x: state.potato.x, y: state.potato.y };
+        spawnExplosionParticles(vPos.x, vPos.y);
+        SoundFX.playExplosion();
+        Net.broadcastFX('explosion', vPos.x, vPos.y, '#ef4444', 'BOOM!');
+
+        if (victim) {
+          victim.lives = Math.max(0, victim.lives - 1);
+          spawnFloatingText(vPos.x, vPos.y - 0.12, `${victim.name} -1 LIFE! 💥`, '#f43f5e');
+          if (victim.lives <= 0) {
+            victim.alive = false;
+          }
+        }
+
+        // Award survival points to other alive players
+        getActiveSeats().forEach((s) => {
+          if (!victim || s.index !== victim.index) {
+            s.score += 1;
+          }
+        });
+
+        renderSeatsUI();
+
+        const survivors = getActiveSeats();
+        if (survivors.length <= 1) {
+          state.phase = 'match_over';
+          const champ = survivors[0] || victim;
+          state.winnerText = champ ? `🏆 ${champ.name} Wins the Match!` : 'Match Complete!';
+          state.subtitleText = victim
+            ? `The potato exploded on ${victim.name} at Vertex ${victim.index + 1}!`
+            : 'All rounds concluded!';
+          SoundFX.playWinFanfare();
+        } else {
+          state.phase = 'round_over';
+          state.winnerText = `💥 BOOM! ${victim ? victim.name : 'Player'} Got Burned!`;
+          state.subtitleText = victim && !victim.alive
+            ? `${victim.name} (Vertex ${victim.index + 1}) is eliminated! ${survivors.length} players remain.`
+            : `${victim ? victim.name : 'Player'} has ${victim ? victim.lives : 0} ${victim && victim.lives === 1 ? 'life' : 'lives'} left. Ready for Round ${state.roundNumber + 1}!`;
+        }
+
+        syncOverlayFromState();
+        Net.broadcastStateFromHost(true);
+      }
+
+      function updateHostSimulation(dt) {
+        if (state.phase !== 'playing') return;
+
+        // 1. Update local player's seat aim & charging
+        const mySeat = state.seats[state.mySeatIndex];
+        if (mySeat) {
+          mySeat.aimAngle = state.input.aimAngle;
+          mySeat.isCharging = state.input.isCharging;
+          mySeat.chargePower = state.input.chargePower;
+        }
+
+        // 2. Countdown potato fuse
+        state.potato.fuseRemaining = Math.max(0, state.potato.fuseRemaining - dt);
+        const urgency = 1 - (state.potato.fuseRemaining / Math.max(1, state.potato.fuseTotal));
+
+        // Ticking sound rhythm
+        const tickInterval = Math.max(0.11, 0.55 - urgency * 0.44);
+        if (performance.now() - state.lastTickSoundTime > tickInterval * 1000) {
+          state.lastTickSoundTime = performance.now();
+          SoundFX.playTick(urgency);
+        }
+
+        if (state.potato.fuseRemaining <= 0) {
+          handlePotatoExplosion();
+          return;
+        }
+
+        // 3. If potato is held by a vertex player
+        if (state.potato.holderIndex !== -1) {
+          const holder = state.seats[state.potato.holderIndex];
+          if (!holder || !holder.alive) {
+            // Pass immediately to an alive player
+            const alive = getActiveSeats();
+            if (alive.length > 0) {
+              state.potato.holderIndex = alive[0].index;
+            }
+            return;
+          }
+
+          const vPos = HEX_VERTICES[holder.index];
+          state.potato.x = vPos.x;
+          state.potato.y = vPos.y;
+          state.potato.vx = 0;
+          state.potato.vy = 0;
+
+          // Bot AI when holding the potato
+          if (holder.isBot) {
+            const targetPos = HEX_VERTICES[holder.botTargetSeat] || { x: 0, y: 0 };
+            const desiredAngle = Math.atan2(targetPos.y - vPos.y, targetPos.x - vPos.x);
+
+            // Smoothly rotate bot's aim toward target vertex
+            let diff = desiredAngle - holder.aimAngle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            holder.aimAngle += diff * Math.min(1, dt * 10);
+
+            holder.botThinkTimer -= dt;
+            if (holder.botThinkTimer <= 0.35) {
+              holder.isCharging = true;
+              holder.chargePower = Math.min(1, holder.chargePower + dt * 1.9);
+            }
+            if (holder.botThinkTimer <= 0) {
+              const jitterAngle = state.botDifficulty === 'easy'
+                ? (Math.random() - 0.5) * 0.22
+                : state.botDifficulty === 'hard'
+                  ? (Math.random() - 0.5) * 0.04
+                  : (Math.random() - 0.5) * 0.1;
+              const throwPwr = 0.45 + Math.random() * 0.5;
+              executeThrow(holder.index, desiredAngle + jitterAngle, throwPwr);
+            }
+          }
+        } else {
+          // 4. Potato is flying in mid-air across the hexagon!
+          state.potato.inFlightTime += dt;
+          state.potato.catchCooldown = Math.max(0, state.potato.catchCooldown - dt);
+          state.potato.spinAngle += dt * (8 + state.potato.throwPowerRatio * 14);
+
+          state.potato.x += state.potato.vx * dt;
+          state.potato.y += state.potato.vy * dt;
+
+          // Light air drag
+          const drag = Math.pow(0.985, dt * 60);
+          state.potato.vx *= drag;
+          state.potato.vy *= drag;
+
+          // Trail embers while flying
+          if (Math.random() < 0.75) {
+            state.particles.push({
+              x: state.potato.x + (Math.random() - 0.5) * 0.04,
+              y: state.potato.y + (Math.random() - 0.5) * 0.04,
+              vx: -state.potato.vx * 0.12 + (Math.random() - 0.5) * 0.2,
+              vy: -state.potato.vy * 0.12 + (Math.random() - 0.5) * 0.2,
+              size: 2.5 + Math.random() * 3.5,
+              color: urgency > 0.65 ? '#ef4444' : '#f59e0b',
+              alpha: 0.9,
+              life: 0.22 + Math.random() * 0.15
+            });
+          }
+
+          // Bounce off hexagon boundary walls
+          collidePotatoWithHexagonEdges();
+
+          // If potato slows down too much or flies for > 2.2s without a catch, gently magnetize toward nearest alive vertex so it never stalls in center
+          const currentSpeed = Math.hypot(state.potato.vx, state.potato.vy);
+          if (currentSpeed < 0.85 || state.potato.inFlightTime > 1.8) {
+            const alive = getActiveSeats();
+            let nearest = null;
+            let bestDist = Infinity;
+            alive.forEach((s) => {
+              const vp = HEX_VERTICES[s.index];
+              const d = Math.hypot(vp.x - state.potato.x, vp.y - state.potato.y);
+              if (d < bestDist) {
+                bestDist = d;
+                nearest = vp;
+              }
+            });
+            if (nearest && bestDist > 0.01) {
+              const pull = 2.4 * dt;
+              state.potato.vx += ((nearest.x - state.potato.x) / bestDist) * pull;
+              state.potato.vy += ((nearest.y - state.potato.y) / bestDist) * pull;
+            }
+          }
+
+          // Check catch collision with any alive vertex player
+          const catchRadiusNorm = 0.175;
+          const activeSeats = getActiveSeats();
+          for (let i = 0; i < activeSeats.length; i++) {
+            const seat = activeSeats[i];
+            if (seat.index === state.potato.lastHolderIndex && state.potato.catchCooldown > 0) {
+              continue;
+            }
+            const vp = HEX_VERTICES[seat.index];
+            const dist = Math.hypot(state.potato.x - vp.x, state.potato.y - vp.y);
+            if (dist <= catchRadiusNorm) {
+              // Caught by seat!
+              state.potato.holderIndex = seat.index;
+              state.potato.x = vp.x;
+              state.potato.y = vp.y;
+              state.potato.vx = 0;
+              state.potato.vy = 0;
+
+              seat.isCharging = false;
+              seat.chargePower = 0;
+              seat.botThinkTimer = getBotReactionTime();
+              seat.botTargetSeat = pickBotTarget(seat.index);
+
+              const catchLabel = state.potato.throwPowerRatio > 0.8 ? 'POWER CATCH! 🔥' : 'CAUGHT!';
+              spawnFloatingText(vp.x, vp.y - 0.1, catchLabel, SEAT_COLORS[seat.index].light);
+              SoundFX.playCatch();
+              Net.broadcastFX('catch', vp.x, vp.y, SEAT_COLORS[seat.index].light, catchLabel);
+              Net.broadcastStateFromHost(true);
+              break;
+            }
+          }
+        }
+
+        Net.broadcastStateFromHost(false);
+      }
+
+      // ==========================================
+      // 7. VISUAL EFFECTS & HUD UPDATES
+      // ==========================================
+      function updateVisualFX(dt) {
+        if (state.screenShake > 0) {
+          state.screenShake = Math.max(0, state.screenShake - dt * 45);
+        }
+
+        // Update local charging bar if holding mouse button down
+        if (state.input.isCharging) {
+          const elapsedSec = (performance.now() - state.input.chargeStartMs) / 1000;
+          // Reaches 100% power in 1.15 seconds of holding left click
+          state.input.chargePower = Math.min(1.0, elapsedSec / 1.15);
+          if (!state.isHost) {
+            Net.sendClientInput(false, 0);
+          }
+        }
+
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+          const p = state.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt;
+          p.alpha = Math.max(0, p.life * 2.2);
+          if (p.life <= 0) state.particles.splice(i, 1);
+        }
+
+        for (let i = state.shockwaves.length - 1; i >= 0; i--) {
+          const sw = state.shockwaves[i];
+          sw.radius += dt * 1.15;
+          sw.alpha = Math.max(0, 1 - sw.radius / sw.maxRadius);
+          if (sw.alpha <= 0) state.shockwaves.splice(i, 1);
+        }
+
+        for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = state.floatingTexts[i];
+          ft.y += ft.vy * dt;
+          ft.alpha -= dt * 0.95;
+          if (ft.alpha <= 0) state.floatingTexts.splice(i, 1);
+        }
+
+        // Update Top HUD Bars
+        const fusePct = Math.max(0, Math.min(100, (state.potato.fuseRemaining / Math.max(1, state.potato.fuseTotal)) * 100));
+        const hudFuseBar = document.getElementById('hudFuseBar');
+        const hudFuseText = document.getElementById('hudFuseText');
+        if (hudFuseBar) hudFuseBar.style.width = fusePct.toFixed(1) + '%';
+        if (hudFuseText) hudFuseText.textContent = state.potato.fuseRemaining.toFixed(1) + 's';
+
+        const pwrPct = Math.round(state.input.chargePower * 100);
+        const hudPowerBar = document.getElementById('hudPowerBar');
+        const hudPowerText = document.getElementById('hudPowerText');
+        if (hudPowerBar) hudPowerBar.style.width = pwrPct + '%';
+        if (hudPowerText) hudPowerText.textContent = pwrPct + '%';
+
+        const holderStatus = document.getElementById('holderStatusText');
+        if (holderStatus) {
+          if (state.potato.holderIndex !== -1 && state.seats[state.potato.holderIndex]) {
+            const h = state.seats[state.potato.holderIndex];
+            holderStatus.innerHTML = `Potato Holder: <strong style="color:${SEAT_COLORS[h.index].light}">${h.name} (V${h.index + 1})</strong>`;
+          } else {
+            const lastH = state.seats[state.potato.lastHolderIndex];
+            holderStatus.innerHTML = `In Flight! <span class="text-amber-300">(Thrown by ${lastH ? lastH.name : '?'})</span>`;
+          }
+        }
+
+        const roundStatus = document.getElementById('roundStatusText');
+        if (roundStatus) {
+          if (state.phase === 'playing') {
+            roundStatus.textContent = `🔥 Round ${state.roundNumber} Live`;
+          } else if (state.phase === 'paused') {
+            roundStatus.textContent = `⏸ Match Paused (Round ${state.roundNumber})`;
+          } else {
+            roundStatus.textContent = `🏁 Round ${state.roundNumber} Ended`;
+          }
+        }
+      }
+
+      // ==========================================
+      // 8. HTML5 CANVAS 2D RENDERER
+      // ==========================================
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      let arenaCenter = { x: 400, y: 300 };
+      let hexRadiusPx = 200;
+
+      function resizeCanvas() {
+        const container = document.getElementById('canvasContainer');
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(320, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(320, Math.floor(rect.height * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        arenaCenter.x = rect.width / 2;
+        arenaCenter.y = rect.height / 2;
+        hexRadiusPx = Math.max(115, Math.min(rect.width, rect.height) * 0.36);
+      }
+
+      function normToScreen(nx, ny) {
+        return {
+          x: arenaCenter.x + nx * hexRadiusPx,
+          y: arenaCenter.y + ny * hexRadiusPx
+        };
+      }
+
+      function screenToNorm(sx, sy) {
+        return {
+          x: (sx - arenaCenter.x) / hexRadiusPx,
+          y: (sy - arenaCenter.y) / hexRadiusPx
+        };
+      }
+
+      function renderArena() {
+        const container = document.getElementById('canvasContainer');
+        const width = container ? container.clientWidth : 800;
+        const height = container ? container.clientHeight : 600;
+
+        ctx.save();
+        ctx.clearRect(0, 0, width, height);
+
+        // Apply screen shake on explosion
+        if (state.screenShake > 0.2) {
+          const sx = (Math.random() - 0.5) * state.screenShake;
+          const sy = (Math.random() - 0.5) * state.screenShake;
+          ctx.translate(sx, sy);
+        }
+
+        // 1. Subtle radial background glow behind the hexagon
+        const bgGrad = ctx.createRadialGradient(
+          arenaCenter.x, arenaCenter.y, hexRadiusPx * 0.1,
+          arenaCenter.x, arenaCenter.y, hexRadiusPx * 1.35
+        );
+        bgGrad.addColorStop(0, 'rgba(30, 41, 59, 0.75)');
+        bgGrad.addColorStop(0.6, 'rgba(15, 23, 42, 0.45)');
+        bgGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. Draw Hexagon Arena Floor & Outer Perimeter
+        ctx.beginPath();
+        HEX_VERTICES.forEach((v, idx) => {
+          const p = normToScreen(v.x, v.y);
+          if (idx === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+
+        const hexFill = ctx.createRadialGradient(
+          arenaCenter.x, arenaCenter.y, 10,
+          arenaCenter.x, arenaCenter.y, hexRadiusPx
+        );
+        hexFill.addColorStop(0, 'rgba(30, 27, 75, 0.85)');
+        hexFill.addColorStop(1, 'rgba(15, 23, 42, 0.92)');
+        ctx.fillStyle = hexFill;
+        ctx.fill();
+
+        // Inner geometric web lines connecting opposite vertices and concentric hex rings
+        [0.35, 0.68].forEach((scale) => {
+          ctx.beginPath();
+          HEX_VERTICES.forEach((v, idx) => {
+            const p = normToScreen(v.x * scale, v.y * scale);
+            if (idx === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
+          ctx.closePath();
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.11)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+
+        // Diagonal spokes between vertices and center
+        HEX_VERTICES.forEach((v) => {
+          const p = normToScreen(v.x, v.y);
+          ctx.beginPath();
+          ctx.moveTo(arenaCenter.x, arenaCenter.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+
+        // Glowing Hexagon Outer Border
+        ctx.beginPath();
+        HEX_VERTICES.forEach((v, idx) => {
+          const p = normToScreen(v.x, v.y);
+          if (idx === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.65)';
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = 'rgba(245, 158, 11, 0.45)';
+        ctx.shadowBlur = 14;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // 3. Shockwaves
+        state.shockwaves.forEach((sw) => {
+          const p = normToScreen(sw.x, sw.y);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, sw.radius * hexRadiusPx, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(249, 115, 22, ${sw.alpha})`;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        });
+
+        // 4. Draw Aim Trajectory Line for the Local Player (and active Holder)
+        const mySeat = state.seats[state.mySeatIndex];
+        if (mySeat && mySeat.alive && state.phase === 'playing') {
+          const myPos = normToScreen(HEX_VERTICES[mySeat.index].x, HEX_VERTICES[mySeat.index].y);
+          const isHolding = (state.potato.holderIndex === mySeat.index);
+          const pwr = state.input.isCharging ? state.input.chargePower : 0.35;
+          const lineLen = hexRadiusPx * (0.42 + pwr * 1.25);
+          const targetX = myPos.x + Math.cos(state.input.aimAngle) * lineLen;
+          const targetY = myPos.y + Math.sin(state.input.aimAngle) * lineLen;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([7, 6]);
+          ctx.moveTo(myPos.x, myPos.y);
+          ctx.lineTo(targetX, targetY);
+          ctx.strokeStyle = isHolding
+            ? (state.input.isCharging ? '#f97316' : 'rgba(251, 191, 36, 0.75)')
+            : 'rgba(148, 163, 184, 0.32)';
+          ctx.lineWidth = state.input.isCharging ? 3 : 2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Target reticle at end of aim vector
+          ctx.beginPath();
+          ctx.arc(targetX, targetY, state.input.isCharging ? 7 + pwr * 5 : 5, 0, Math.PI * 2);
+          ctx.strokeStyle = isHolding ? '#fbbf24' : 'rgba(148, 163, 184, 0.45)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 5. Draw Each of the 6 Vertex Seats & Players
+        state.seats.forEach((seat, idx) => {
+          const vNorm = HEX_VERTICES[idx];
+          const pos = normToScreen(vNorm.x, vNorm.y);
+          const palette = SEAT_COLORS[idx];
+          const isHolder = (state.potato.holderIndex === idx);
+          const isMe = (idx === state.mySeatIndex);
+          const seatRadius = Math.max(20, Math.min(30, hexRadiusPx * 0.135));
+
+          // Catch zone ring for alive players
+          if (seat.alive) {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, hexRadiusPx * 0.175, 0, Math.PI * 2);
+            ctx.strokeStyle = isHolder
+              ? 'rgba(251, 191, 36, 0.55)'
+              : 'rgba(148, 163, 184, 0.16)';
+            ctx.lineWidth = isHolder ? 2 : 1;
+            ctx.stroke();
+          }
+
+          // Outer pulsing danger ring when holding the potato
+          if (isHolder && seat.alive) {
+            const pulse = 1 + Math.sin(performance.now() * 0.015) * 0.12;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, seatRadius * 1.38 * pulse, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+            ctx.fill();
+          }
+
+          // Vertex Pedestal Base
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, seatRadius, 0, Math.PI * 2);
+          ctx.fillStyle = seat.alive ? palette.main : 'rgba(51, 65, 85, 0.65)';
+          ctx.fill();
+          ctx.lineWidth = isMe ? 3.5 : 2;
+          ctx.strokeStyle = isMe ? '#ffffff' : palette.light;
+          ctx.stroke();
+
+          // Direction pointer (small nose/arrow showing where this vertex player is aiming)
+          if (seat.alive) {
+            const aimX = pos.x + Math.cos(seat.aimAngle) * (seatRadius + 7);
+            const aimY = pos.y + Math.sin(seat.aimAngle) * (seatRadius + 7);
+            ctx.beginPath();
+            ctx.arc(aimX, aimY, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = isHolder ? '#fef08a' : palette.light;
+            ctx.fill();
+          }
+
+          // Avatar Face / Expression inside Vertex Circle
+          ctx.fillStyle = '#0f172a';
+          ctx.font = `bold ${Math.round(seatRadius * 0.65)}px Inter, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const face = !seat.alive ? '💀' : isHolder ? '😱' : seat.isCharging ? '😤' : '😎';
+          ctx.fillText(face, pos.x, pos.y + 1);
+
+          // Power Charge Meter Arc around player if charging
+          if (seat.alive && seat.isCharging && seat.chargePower > 0.02) {
+            ctx.beginPath();
+            ctx.arc(
+              pos.x,
+              pos.y,
+              seatRadius + 6,
+              -Math.PI / 2,
+              -Math.PI / 2 + Math.PI * 2 * seat.chargePower
+            );
+            ctx.strokeStyle = seat.chargePower > 0.75 ? '#ef4444' : '#38bdf8';
+            ctx.lineWidth = 4.5;
+            ctx.stroke();
+          }
+
+          // Player Name & Lives Badge (positioned slightly outward from vertex)
+          const labelDist = seatRadius + 22;
+          const labelX = pos.x + Math.cos(vNorm.angle) * labelDist;
+          const labelY = pos.y + Math.sin(vNorm.angle) * labelDist;
+
+          ctx.font = '700 11px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = seat.alive ? '#f8fafc' : '#64748b';
+          const tagPrefix = isMe ? '★ ' : '';
+          ctx.fillText(`${tagPrefix}${seat.name}`, labelX, labelY - 5);
+
+          // Hearts / Lives display
+          ctx.font = '10px Inter, sans-serif';
+          const hearts = seat.alive ? '❤️'.repeat(Math.max(0, seat.lives)) : 'ELIMINATED';
+          ctx.fillStyle = seat.alive ? '#fda4af' : '#64748b';
+          ctx.fillText(hearts, labelX, labelY + 9);
+        });
+
+        // 6. Particles
+        state.particles.forEach((p) => {
+          const sp = normToScreen(p.x, p.y);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha));
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // 7. Draw the Hot Potato!
+        if (state.phase === 'playing' || state.phase === 'paused') {
+          let potScreen = normToScreen(state.potato.x, state.potato.y);
+          if (state.potato.holderIndex !== -1) {
+            // Offset slightly toward center from holder's hands
+            const hv = HEX_VERTICES[state.potato.holderIndex];
+            potScreen = normToScreen(hv.x * 0.82, hv.y * 0.82);
+          }
+
+          const urgency = 1 - (state.potato.fuseRemaining / Math.max(1, state.potato.fuseTotal));
+          const jitterX = (Math.random() - 0.5) * urgency * 5;
+          const jitterY = (Math.random() - 0.5) * urgency * 5;
+
+          ctx.save();
+          ctx.translate(potScreen.x + jitterX, potScreen.y + jitterY);
+          ctx.rotate(state.potato.spinAngle);
+
+          // Fiery outer aura
+          const auraRadius = 22 + urgency * 12;
+          const aura = ctx.createRadialGradient(0, 0, 4, 0, 0, auraRadius);
+          aura.addColorStop(0, urgency > 0.65 ? 'rgba(239, 68, 68, 0.9)' : 'rgba(251, 191, 36, 0.85)');
+          aura.addColorStop(1, 'rgba(239, 68, 68, 0)');
+          ctx.fillStyle = aura;
+          ctx.beginPath();
+          ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Potato oval body
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 16, 12, 0, 0, Math.PI * 2);
+          ctx.fillStyle = urgency > 0.72 ? '#dc2626' : urgency > 0.4 ? '#d97706' : '#b45309';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#fef08a';
+          ctx.stroke();
+
+          // Potato spots & burning eyes
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(-5, -2, 2.2, 0, Math.PI * 2);
+          ctx.arc(5, -2, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+
+          // Countdown timer badge above potato
+          ctx.font = '800 11px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = urgency > 0.65 ? '#fecaca' : '#fef08a';
+          ctx.fillText(`${state.potato.fuseRemaining.toFixed(1)}s`, potScreen.x, potScreen.y - 22);
+        }
+
+        // 8. Floating Texts
+        state.floatingTexts.forEach((ft) => {
+          const sp = normToScreen(ft.x, ft.y);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, ft.alpha);
+          ctx.font = '800 13px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, sp.x, sp.y);
+          ctx.restore();
+        });
+
+        ctx.restore();
+      }
+
+      // ==========================================
+      // 9. UI BINDINGS & INTERACTIVITY
+      // ==========================================
+      function renderSeatsUI() {
+        const listEl = document.getElementById('vertexSeatsList');
+        const aliveBadge = document.getElementById('aliveCountBadge');
+        if (!listEl) return;
+
+        const aliveCount = getActiveSeats().length;
+        if (aliveBadge) {
+          aliveBadge.textContent = `${aliveCount} / 6 Active`;
+        }
+
+        listEl.innerHTML = '';
+        state.seats.forEach((seat, idx) => {
+          const palette = SEAT_COLORS[idx];
+          const isMe = (idx === state.mySeatIndex);
+          const isHolder = (state.potato.holderIndex === idx);
+
+          const row = document.createElement('div');
+          row.className = `flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-xs transition ${
+            isHolder
+              ? 'bg-amber-500/15 border-amber-500/50'
+              : 'bg-slate-900/75 border-slate-800/90'
+          }`;
+
+          const left = document.createElement('div');
+          left.className = 'flex items-center gap-2 min-w-0';
+
+          const dot = document.createElement('span');
+          dot.className = 'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-slate-950 shrink-0';
+          dot.style.backgroundColor = seat.alive ? palette.main : '#475569';
+          dot.textContent = 'V' + (idx + 1);
+
+          const titleWrap = document.createElement('div');
+          titleWrap.className = 'truncate';
+          const nameSpan = document.createElement('div');
+          nameSpan.className = 'font-bold text-slate-100 truncate flex items-center gap-1';
+          nameSpan.textContent = seat.name + (isMe ? ' (You)' : '');
+
+          const roleSpan = document.createElement('div');
+          roleSpan.className = 'text-[10px] text-slate-400';
+          roleSpan.textContent = isMe
+            ? (state.isHost ? 'Device Host' : 'Connected Peer')
+            : (seat.isBot ? `AI Bot (${state.botDifficulty})` : 'Remote Player');
+
+          titleWrap.appendChild(nameSpan);
+          titleWrap.appendChild(roleSpan);
+          left.appendChild(dot);
+          left.appendChild(titleWrap);
+
+          const right = document.createElement('div');
+          right.className = 'flex items-center gap-2 shrink-0';
+
+          const statusSpan = document.createElement('span');
+          statusSpan.className = 'text-[11px] font-mono';
+          statusSpan.textContent = seat.alive
+            ? ('❤️'.repeat(Math.max(0, seat.lives)) || '💀')
+            : '💀 Out';
+
+          const scoreSpan = document.createElement('span');
+          scoreSpan.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-amber-300';
+          scoreSpan.textContent = `${seat.score} pts`;
+
+          right.appendChild(statusSpan);
+          right.appendChild(scoreSpan);
+
+          row.appendChild(left);
+          row.appendChild(right);
+          listEl.appendChild(row);
+        });
+      }
+
+      function syncOverlayFromState() {
+        const overlay = document.getElementById('arenaOverlay');
+        const titleEl = document.getElementById('overlayTitle');
+        const subEl = document.getElementById('overlaySubtitle');
+        const btnAction = document.getElementById('btnOverlayAction');
+
+        if (!overlay) return;
+        if (state.phase === 'round_over' || state.phase === 'match_over') {
+          overlay.classList.remove('hidden');
+          if (titleEl) titleEl.textContent = state.winnerText || 'Round Complete!';
+          if (subEl) subEl.textContent = state.subtitleText || '';
+          if (btnAction) {
+            btnAction.textContent = state.phase === 'match_over' ? 'Start New Match' : 'Start Next Round';
+          }
+        } else {
+          overlay.classList.add('hidden');
+        }
+      }
+
+      function getShareableInviteUrl() {
+        const baseUrl = window.location.href.split('?')[0].split('#')[0];
+        const code = state.roomCode === 'LOCAL-BOTS' ? 'HP2026' : state.roomCode;
+        return `${baseUrl}?room=${encodeURIComponent(code)}`;
+      }
+
+      function updateRoomUI() {
+        const modeBadge = document.getElementById('modeBadge');
+        const hostRoleTag = document.getElementById('hostRoleTag');
+        const displayRoomCode = document.getElementById('displayRoomCode');
+        const netBadge = document.getElementById('networkPingBadge');
+        const modalUrlInput = document.getElementById('modalShareUrlInput');
+
+        if (displayRoomCode) displayRoomCode.textContent = state.roomCode;
+        if (modalUrlInput) modalUrlInput.value = getShareableInviteUrl();
+
+        if (state.mode === 'single') {
+          if (modeBadge) modeBadge.textContent = 'Single-Player (Bots)';
+          if (hostRoleTag) hostRoleTag.textContent = 'Local Device Host';
+          if (netBadge) netBadge.textContent = 'Host Authority: Your Device (Single-Player)';
+        } else if (state.mode === 'multi_host') {
+          if (modeBadge) modeBadge.textContent = `Multiplayer Host (${state.roomCode})`;
+          if (hostRoleTag) hostRoleTag.textContent = `Hosting Room ${state.roomCode}`;
+          if (netBadge) netBadge.textContent = `P2P Host Authority: Room ${state.roomCode}`;
+        } else {
+          if (modeBadge) modeBadge.textContent = `Joined Room (${state.roomCode})`;
+          if (hostRoleTag) hostRoleTag.textContent = `Client @ Vertex V${state.mySeatIndex + 1}`;
+          if (netBadge) netBadge.textContent = `Connected to Host (${state.roomCode})`;
+        }
+      }
+
+      function copyTextToClipboard(text, successMsg) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast(successMsg, 'success');
+          }).catch(() => fallbackCopy(text, successMsg));
+        } else {
+          fallbackCopy(text, successMsg);
+        }
+      }
+
+      function fallbackCopy(text, successMsg) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast(successMsg, 'success');
+        } catch (e) {
+          showToast('Copy ready: ' + text, 'info');
+        }
+        ta.remove();
+      }
+
+      // ==========================================
+      // 10. POINTER / MOUSE AIM & HOLD-CLICK POWER
+      // ==========================================
+      function updateAimFromPointer(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = clientX - rect.left;
+        const sy = clientY - rect.top;
+        const norm = screenToNorm(sx, sy);
+        state.input.mouseNormX = norm.x;
+        state.input.mouseNormY = norm.y;
+
+        const myVert = HEX_VERTICES[state.mySeatIndex] || HEX_VERTICES[0];
+        state.input.aimAngle = Math.atan2(norm.y - myVert.y, norm.x - myVert.x);
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        updateAimFromPointer(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        // Left click (button 0) or touch contact starts charging throw power
+        if (e.button !== undefined && e.button !== 0) return;
+        SoundFX.init();
+        updateAimFromPointer(e.clientX, e.clientY);
+
+        if (state.phase !== 'playing') return;
+        const mySeat = state.seats[state.mySeatIndex];
+        if (!mySeat || !mySeat.alive) return;
+
+        state.input.isCharging = true;
+        state.input.chargeStartMs = performance.now();
+        state.input.chargePower = 0.08;
+      });
+
+      window.addEventListener('pointerup', (e) => {
+        if (!state.input.isCharging) return;
+        const elapsedSec = (performance.now() - state.input.chargeStartMs) / 1000;
+        const finalPower = Math.max(0.18, Math.min(1.0, elapsedSec / 1.15));
+
+        state.input.isCharging = false;
+        state.input.chargePower = 0;
+
+        if (state.phase !== 'playing') return;
+        if (state.isHost) {
+          if (state.potato.holderIndex === state.mySeatIndex) {
+            executeThrow(state.mySeatIndex, state.input.aimAngle, finalPower);
+          }
+        } else {
+          Net.sendClientInput(true, finalPower);
+        }
+      });
+
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      // ==========================================
+      // 11. BUTTON EVENT LISTENERS
+      // ==========================================
+      document.getElementById('btnMenuSingle').addEventListener('click', () => {
+        Net.cleanup();
+        state.mode = 'single';
+        state.isHost = true;
+        state.mySeatIndex = 0;
+        state.roomCode = 'LOCAL-BOTS';
+        state.fillWithBots = true;
+        createInitialSeats();
+        resetFullMatch();
+        updateRoomUI();
+        setP2PStatus('● Single-Player Local Host', 'text-emerald-400');
+        showToast('Switched to Single-Player Mode with 5 Hexagon Bots!', 'info');
+      });
+
+      document.getElementById('btnMenuMulti').addEventListener('click', () => {
+        if (state.mode !== 'multi_host') {
+          Net.startHostingRoom();
+        } else {
+          showToast('Already hosting room ' + state.roomCode, 'info');
+        }
+      });
+
+      document.getElementById('btnCreateHostedRoom').addEventListener('click', () => {
+        Net.startHostingRoom();
+      });
+
+      document.getElementById('btnCopyRoomLink').addEventListener('click', () => {
+        if (state.roomCode === 'LOCAL-BOTS') {
+          Net.startHostingRoom();
+        }
+        copyTextToClipboard(getShareableInviteUrl(), `Copied Room ${state.roomCode} Invite Link!`);
+      });
+
+      document.getElementById('btnOpenSameDeviceTab').addEventListener('click', () => {
+        if (state.roomCode === 'LOCAL-BOTS') {
+          Net.startHostingRoom();
+        }
+        window.open(getShareableInviteUrl(), '_blank');
+      });
+
+      document.getElementById('tabHostRoom').addEventListener('click', () => {
+        document.getElementById('viewHostRoom').classList.remove('hidden');
+        document.getElementById('viewJoinRoom').classList.add('hidden');
+        document.getElementById('tabHostRoom').className = 'py-1.5 px-2 rounded-lg text-xs font-bold bg-indigo-600 text-white transition';
+        document.getElementById('tabJoinRoom').className = 'py-1.5 px-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition';
+      });
+
+      document.getElementById('tabJoinRoom').addEventListener('click', () => {
+        document.getElementById('viewHostRoom').classList.add('hidden');
+        document.getElementById('viewJoinRoom').classList.remove('hidden');
+        document.getElementById('tabJoinRoom').className = 'py-1.5 px-2 rounded-lg text-xs font-bold bg-indigo-600 text-white transition';
+        document.getElementById('tabHostRoom').className = 'py-1.5 px-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition';
+      });
+
+      document.getElementById('btnConnectToHost').addEventListener('click', () => {
+        const code = document.getElementById('inputJoinCode').value;
+        Net.joinHostedRoom(code);
+      });
+
+      document.getElementById('btnStartPauseMatch').addEventListener('click', () => {
+        if (!state.isHost) {
+          showToast('Only the Room Host can pause or resume.', 'warn');
+          return;
+        }
+        if (state.phase === 'playing') {
+          state.phase = 'paused';
+          showToast('Game Paused', 'info');
+        } else if (state.phase === 'paused') {
+          state.phase = 'playing';
+          showToast('Game Resumed!', 'success');
+        } else {
+          state.roundNumber += 1;
+          resetRound(true);
+        }
+        syncOverlayFromState();
+        Net.broadcastStateFromHost(true);
+      });
+
+      document.getElementById('btnRestartMatch').addEventListener('click', () => {
+        if (!state.isHost) {
+          showToast('Only the Room Host can reset the match.', 'warn');
+          return;
+        }
+        resetFullMatch();
+        showToast('Match reset! All 6 vertices restored.', 'info');
+      });
+
+      document.getElementById('btnOverlayAction').addEventListener('click', () => {
+        if (!state.isHost) {
+          showToast('Waiting for the Host to start the next round...', 'info');
+          return;
+        }
+        if (state.phase === 'match_over') {
+          resetFullMatch();
+        } else {
+          state.roundNumber += 1;
+          resetRound(true);
+        }
+      });
+
+      document.getElementById('btnOverlayReset').addEventListener('click', () => {
+        if (!state.isHost) return;
+        resetFullMatch();
+      });
+
+      document.getElementById('selectBotDifficulty').addEventListener('change', (e) => {
+        state.botDifficulty = e.target.value;
+        renderSeatsUI();
+      });
+
+      document.getElementById('selectStartingLives').addEventListener('change', (e) => {
+        state.startingLives = parseInt(e.target.value, 10) || 3;
+        if (state.isHost) resetFullMatch();
+      });
+
+      document.getElementById('selectFuseDuration').addEventListener('change', (e) => {
+        state.baseFuseSeconds = parseInt(e.target.value, 10) || 11;
+      });
+
+      document.getElementById('inputPlayerName').addEventListener('input', (e) => {
+        const val = e.target.value.trim() || 'Player 1';
+        const mySeat = state.seats[state.mySeatIndex];
+        if (mySeat) {
+          mySeat.name = val;
+          renderSeatsUI();
+        }
+      });
+
+      document.getElementById('chkFillBots').addEventListener('change', (e) => {
+        state.fillWithBots = e.target.checked;
+        if (state.isHost) resetFullMatch();
+      });
+
+      document.getElementById('btnToggleMute').addEventListener('click', (e) => {
+        SoundFX.muted = !SoundFX.muted;
+        e.currentTarget.textContent = SoundFX.muted ? '🔇 Muted' : '🔊 SFX On';
+      });
+
+      // Deploy & Share Modal
+      document.getElementById('btnOpenDeployModal').addEventListener('click', () => {
+        if (state.roomCode === 'LOCAL-BOTS') {
+          Net.startHostingRoom();
+        }
+        updateRoomUI();
+        document.getElementById('deployModal').classList.remove('hidden');
+      });
+
+      document.getElementById('btnCloseDeployModal').addEventListener('click', () => {
+        document.getElementById('deployModal').classList.add('hidden');
+      });
+
+      document.getElementById('btnModalCopyUrl').addEventListener('click', () => {
+        copyTextToClipboard(getShareableInviteUrl(), 'Shareable Invite Link copied!');
+      });
+
+      document.getElementById('btnDownloadStandaloneHtml').addEventListener('click', () => {
+        const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '2d_hot_potato.html';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Downloaded 2d_hot_potato.html!', 'success');
+      });
+
+      // ==========================================
+      // 12. MAIN GAME LOOP & INITIALIZATION
+      // ==========================================
+      let lastFrameTime = performance.now();
+      let animFrameId = null;
+
+      function gameLoop(now) {
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastFrameTime) / 1000));
+        lastFrameTime = now;
+
+        if (state.isHost) {
+          updateHostSimulation(dt);
+        }
+        updateVisualFX(dt);
+        renderArena();
+
+        animFrameId = requestAnimationFrame(gameLoop);
+      }
+
+      window.addEventListener('resize', () => {
+        resizeCanvas();
+        renderArena();
+      });
+
+      window.onload = function () {
+        createInitialSeats();
+        resizeCanvas();
+        resetFullMatch();
+        updateRoomUI();
+
+        // Check URL parameters for automatic ?room=CODE join
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const roomParam = params.get('room');
+          if (roomParam && roomParam.trim()) {
+            document.getElementById('tabJoinRoom').click();
+            document.getElementById('inputJoinCode').value = roomParam.trim().toUpperCase();
+            Net.joinHostedRoom(roomParam.trim());
+          }
+        } catch (e) {}
+
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        lastFrameTime = performance.now();
+        animFrameId = requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
